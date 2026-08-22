@@ -1,0 +1,20 @@
+# Shell scripts must keep LF endings regardless of the platform they are
+# committed from. A CRLF shebang line makes the interpreter unfindable and the
+# script fails with a message that does not mention line endings.
+*.sh text eol=lf
+
+# The desktop entry is parsed line by line by the desktop environment.
+*.desktop text eol=lf
+
+# Served verbatim to a browser.
+*.html text eol=lf
+
+# Sources are normalised in the repository and checked out natively.
+*.vb text
+*.vbproj text
+*.sln text
+*.md text
+
+# Binary assets must never be line-ending converted.
+*.png binary
+*.ico binary

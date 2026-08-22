@@ -30,20 +30,28 @@ happens to be.
 
 ---
 
-## Requirements
+## Two hosts, one protocol
 
-- Windows 10 or 11
-- [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
-- [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
-  — already present on current Windows installations
-- A USB-serial driver for your board (CP210x, CH340, FTDI, …)
+| | Windows | Linux |
+|---|---|---|
+| Window | Windows Forms + WebView2 | Browser in application mode |
+| Controls | Menu bar | The terminal it runs in |
+| Ships as | `.exe` | Single self-contained executable |
 
-To build, the .NET 10 SDK, or Visual Studio with the **.NET desktop
-development** workload.
+Both drive the **same** `LinkSession`, the same serial transport, the same
+loopback server and the same shell page. The protocol exists in one place and
+neither host reimplements it, so a device that works against one works against
+the other.
 
 ---
 
-## Building
+## Windows
+
+Requires Windows 10 or 11, the
+[.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0), the
+[WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
+(already present on current installations), and a USB-serial driver for your
+board (CP210x, CH340, FTDI, …).
 
 ```
 git clone <this repository>
@@ -51,7 +59,57 @@ cd ESP32-Visual-Serial-Terminal
 dotnet build
 ```
 
-Or open `Esp32VisualSerialTerminal.sln` in Visual Studio and press F5.
+Or open `Esp32VisualSerialTerminal.sln` in Visual Studio — the **.NET desktop
+development** workload — and press F5.
+
+---
+
+## Linux
+
+Builds to one self-contained executable. No .NET runtime needs to be installed
+on the machine that runs it.
+
+```
+git clone <this repository>
+cd ESP32-Visual-Serial-Terminal
+./linux/build.sh          # needs the .NET 10 SDK
+./linux/install.sh        # optional: ~/.local/bin + a desktop entry
+```
+
+Then:
+
+```
+esp32-visual-serial-terminal                 # auto-detect, 1024x600
+esp32-visual-serial-terminal -s 800x480
+esp32-visual-serial-terminal -p /dev/ttyUSB0 -b 115200
+esp32-visual-serial-terminal --list-ports
+esp32-visual-serial-terminal --help
+```
+
+The terminal is the control surface in place of a menu bar:
+
+```
+c  connect        d  disconnect     r  request page
+x  clear view     l  toggle log     s  status          q  quit
+```
+
+**Serial permissions.** Serial devices belong to the `dialout` group, and a user
+outside it gets a permission error that reads like a missing device. If a port
+will not open:
+
+```
+sudo usermod -aG dialout $USER
+```
+
+then log out and back in. `--list-ports` marks devices you cannot currently open.
+
+**Which browser.** A Chromium-family browser is preferred and used
+automatically when present, because WebView2 is Chromium and picking the same
+engine keeps rendering consistent between the two hosts. It is launched with
+`--app` at the exact emulated size, so there is no tab strip or address bar
+taking up part of the window. WebKit-based browsers display the page correctly
+but can differ in layout details. Override with `--browser <command>`, or use
+`--no-browser` and open the printed address yourself.
 
 ---
 
@@ -120,26 +178,39 @@ renders in any engine.
 ## How it is put together
 
 ```
-PROTOCOL.md            the specification
-Shell/shell.html       the shell document: frame, event stream, scaling
-Protocol/              message types, framing, CRC-32 — no UI, no I/O
-Transport/             the serial link and record reassembly
-Server/                loopback HTTP server and the push stream
-Form1.vb               the main window
-SerialLog.vb           the raw link viewer
-ViewportDialog.vb      custom resolution prompt
-My Project/            Application Framework startup
+PROTOCOL.md                          the specification
+
+src/Esp32VisualSerialTerminal/       shared core, plus the Windows host
+  Protocol/                          message types, framing, CRC-32
+  Transport/                         the serial link and record reassembly
+  Server/                            loopback HTTP server and the push stream
+  Session/LinkSession.vb             the protocol itself, host-independent
+  Shell/shell.html                   frame, event stream, scaling
+  Form1.vb                           the Windows window
+  SerialLog.vb, StatusDialog.vb, ViewportDialog.vb
+
+src/Esp32VisualSerialTerminal.Linux/ the Linux host
+  Program.vb                         terminal control surface
+  LinuxSerialPorts.vb                /dev enumeration
+  BrowserLauncher.vb                 application-mode browser window
+
+linux/                               build.sh, install.sh, desktop entry
 ```
 
-`Protocol/` has no dependency on the transport or on Windows, and `shell.html` is
-a plain file served verbatim rather than a string baked into the application, so
-it can be dropped into any host implementing the same endpoints.
+The first four of those are free of any user-interface dependency. The Linux
+project compiles them **by reference, not by copy** — it links the same files
+rather than holding its own versions. A reference implementation carrying two
+divergent implementations of its own specification would leave the specification
+answering to neither.
 
-Everything lives in the project's root namespace, and the Application Framework
-starts `Form1` — an ordinary VB Windows Forms application with no custom entry
-point. `My Project/Application.Designer.vb` is kept in source rather than
-generated, because the Visual Studio generator that normally produces it does not
-run under `dotnet build`.
+`shell.html` is a plain file served verbatim rather than a string baked into a
+binary, so it can be dropped into any host implementing the same endpoints.
+
+Everything lives in the project's root namespace, and on Windows the Application
+Framework starts `Form1` — an ordinary VB Windows Forms application with no
+custom entry point. `My Project/Application.Designer.vb` is kept in source rather
+than generated, because the Visual Studio generator that normally produces it
+does not run under `dotnet build`.
 
 ---
 

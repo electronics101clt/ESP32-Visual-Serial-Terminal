@@ -1,18 +1,11 @@
-Imports System.Text.Json
-Imports System.Threading
 Imports System.Windows.Forms
 
 ''' <summary>
-''' Main window. Owns the serial link, the loopback viewer server and the
-''' browser control, and routes messages between them.
+''' Main window. Presentation only: the link, the viewer server and the protocol
+''' itself live in <see cref="LinkSession"/>, which every host in this repository
+''' shares.
 ''' </summary>
 Public Class Form1
-
-    ' Re-asked at this cadence until the device answers with a page. A request
-    ' that is dropped -- because the device was still booting, or the line
-    ' glitched -- is otherwise never retried, and the viewer sits blank with no
-    ' indication anything is wrong.
-    Private Const PageRequestIntervalMs As Integer = 3000
 
     Private Shared ReadOnly BaudRates As Integer() =
         {9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600}
@@ -26,29 +19,16 @@ Public Class Form1
         ("480 x 320", 480, 320)
     }
 
-    Private ReadOnly _serial As New SerialTransport()
-    Private ReadOnly _server As New LocalServer()
+    Private ReadOnly _session As New LinkSession()
     Private ReadOnly _log As New SerialLog()
 
-    ' Fully qualified: System.Threading is imported for Interlocked, and both
-    ' namespaces define a Timer.
-    Private WithEvents PageRequestTimer As New System.Windows.Forms.Timer() With {.Interval = PageRequestIntervalMs}
-    Private WithEvents PortScanTimer As New System.Windows.Forms.Timer() With {.Interval = 1500}
+    Private WithEvents PortScanTimer As New Timer() With {.Interval = 1500}
 
     Private _selectedPort As String
     Private _baudRate As Integer = SerialTransport.DefaultBaudRate
     Private _viewWidth As Integer = 1024
     Private _viewHeight As Integer = 600
-    Private _pageReceived As Boolean
-    Private _awaitingAck As Boolean
     Private _knownPorts As String() = Array.Empty(Of String)()
-
-    ' Reported through Status -> Connection Status rather than a permanent bar.
-    Private _linkState As String = "disconnected"
-    Private _bytesIn As Long
-    Private _bytesOut As Long
-    Private _framesOk As Long
-    Private _framesRejected As Long
     Private _statusDialog As StatusDialog
 
     Private _isFullscreen As Boolean
@@ -61,19 +41,15 @@ Public Class Form1
         BuildBaudMenu()
         BuildViewportMenu()
 
-        AddHandler _serial.LineReceived, AddressOf OnSerialLine
-        AddHandler _serial.Disconnected, AddressOf OnSerialDisconnected
-        AddHandler _serial.BytesTransferred, AddressOf OnBytesTransferred
-
-        AddHandler _server.ViewerEvent, AddressOf OnViewerEvent
-        AddHandler _server.PageRequested, AddressOf OnViewerRequestedPage
+        AddHandler _session.LogLine, AddressOf OnSessionLog
+        AddHandler _session.StateChanged, AddressOf OnSessionState
     End Sub
 
     Private Async Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
-        _server.SetViewport(_viewWidth, _viewHeight)
+        _session.SetViewport(_viewWidth, _viewHeight)
 
         Try
-            _server.Start()
+            _session.StartServer()
         Catch ex As Exception
             MessageBox.Show(Me,
                 "Could not start the local viewer server." & vbCrLf & vbCrLf & ex.Message,
@@ -85,7 +61,7 @@ Public Class Form1
         Try
             Await Browser.EnsureCoreWebView2Async()
             ConfigureBrowser()
-            Browser.CoreWebView2.Navigate(_server.BaseUrl)
+            Browser.CoreWebView2.Navigate(_session.Server.BaseUrl)
         Catch ex As Exception
             MessageBox.Show(Me,
                 "The WebView2 runtime could not be initialised." & vbCrLf & vbCrLf &
@@ -95,7 +71,7 @@ Public Class Form1
         End Try
 
         RefreshPorts()
-        UpdateViewportLabel()
+        UpdateTitle()
         PortScanTimer.Start()
 
         If AutoConnectMenuItem.Checked Then TryAutoConnect()
@@ -109,10 +85,10 @@ Public Class Form1
         s.IsZoomControlEnabled = False
         s.AreBrowserAcceleratorKeysEnabled = False
 
-        ' Zoom is deliberately pinned. Changing it would resize the CSS
-        ' viewport and the emulated layout would stop matching the device.
-        ' Scaling is done inside the shell by transforming a fixed-size stage,
-        ' which leaves layout untouched.
+        ' Zoom is deliberately pinned. Changing it would resize the CSS viewport
+        ' and the emulated layout would stop matching the device. Scaling is done
+        ' inside the shell by transforming a fixed-size stage, which leaves
+        ' layout untouched.
         Browser.ZoomFactor = 1.0
         AddHandler Browser.ZoomFactorChanged,
             Sub()
@@ -139,7 +115,7 @@ Public Class Form1
                     For Each other As ToolStripMenuItem In BaudMenu.DropDownItems
                         other.Checked = (CInt(other.Tag) = _baudRate)
                     Next
-                    If _serial.IsOpen Then Reconnect()
+                    If _session.IsOpen Then Reconnect()
                 End Sub
             BaudMenu.DropDownItems.Add(item)
         Next
@@ -212,9 +188,9 @@ Public Class Form1
     End Sub
 
     ''' <summary>
-    ''' Polls for port arrival. A USB-serial adapter appearing is not surfaced
-    ''' to a plain WinForms app as an event without registering for device
-    ''' notifications, and a short poll is far less machinery for the same
+    ''' Polls for port arrival. A USB-serial adapter appearing is not surfaced to
+    ''' a plain Windows Forms application as an event without registering for
+    ''' device notifications, and a short poll is far less machinery for the same
     ''' result.
     ''' </summary>
     Private Sub PortScanTimer_Tick(sender As Object, e As EventArgs) Handles PortScanTimer.Tick
@@ -224,14 +200,14 @@ Public Class Form1
         Dim appeared = current.Except(_knownPorts, StringComparer.OrdinalIgnoreCase).ToArray()
         RefreshPorts()
 
-        If Not _serial.IsOpen AndAlso AutoConnectMenuItem.Checked AndAlso appeared.Length > 0 Then
+        If Not _session.IsOpen AndAlso AutoConnectMenuItem.Checked AndAlso appeared.Length > 0 Then
             _selectedPort = appeared(0)
             Connect()
         End If
     End Sub
 
     Private Sub TryAutoConnect()
-        If _serial.IsOpen Then Return
+        If _session.IsOpen Then Return
         If _knownPorts.Length = 0 Then Return
 
         _selectedPort = If(_selectedPort, _knownPorts(0))
@@ -240,28 +216,18 @@ Public Class Form1
 
     Private Sub Connect()
         If String.IsNullOrEmpty(_selectedPort) Then
-            SetStatus("No port selected")
+            UpdateTitle("no port selected")
             Return
         End If
 
         Try
-            _serial.Close()
-            _serial.Open(_selectedPort, _baudRate, DtrMenuItem.Checked, RtsMenuItem.Checked)
-
-            _pageReceived = False
-            _log.Add($"--- opened {_selectedPort} @ {_baudRate} 8N1 ---")
-
-            SetStatus("connected")
+            _session.Open(_selectedPort, _baudRate, DtrMenuItem.Checked, RtsMenuItem.Checked)
             ConnectMenuItem.Enabled = False
             DisconnectMenuItem.Enabled = True
 
-            ' Ask straight away, then keep asking until a page lands.
-            RequestPage()
-            PageRequestTimer.Start()
-
         Catch ex As Exception
             _log.Add($"--- open failed: {ex.Message} ---")
-            SetStatus("Connect failed")
+            UpdateTitle("connect failed")
             MessageBox.Show(Me,
                 $"Could not open {_selectedPort}." & vbCrLf & vbCrLf & ex.Message,
                 Text, MessageBoxButtons.OK, MessageBoxIcon.Warning)
@@ -276,164 +242,27 @@ Public Class Form1
     End Sub
 
     Private Sub Disconnect()
-        PageRequestTimer.Stop()
-        _serial.Close()
-        _pageReceived = False
-
-        _server.ClearPage()
-        _log.Add("--- closed ---")
-
-        SetStatus("disconnected")
+        _session.Close()
         ConnectMenuItem.Enabled = True
         DisconnectMenuItem.Enabled = False
     End Sub
 
 #End Region
 
-#Region "Protocol"
+#Region "Session events"
 
-    Private Sub RequestPage()
-        _serial.SendLine(LineCodec.EncodeGetPage())
-        _log.Add("> get_page")
+    Private Sub OnSessionLog(sender As Object, text As String)
+        SafeUi(Sub() _log.Add(text))
     End Sub
 
-    Private Sub PageRequestTimer_Tick(sender As Object, e As EventArgs) Handles PageRequestTimer.Tick
-        If _pageReceived OrElse Not _serial.IsOpen Then
-            PageRequestTimer.Stop()
-            Return
-        End If
-        RequestPage()
-    End Sub
-
-    ''' <summary>
-    ''' Runs on the serial reader thread. Marshals to the UI thread before
-    ''' touching any control or timer.
-    ''' </summary>
-    Private Sub OnSerialLine(sender As Object, line As String)
-        If IsDisposed OrElse Not IsHandleCreated Then Return
-
-        Try
-            BeginInvoke(Sub() HandleLine(line))
-        Catch ex As Exception
-        End Try
-    End Sub
-
-    Private Sub HandleLine(line As String)
-        Dim json = LineCodec.Unframe(line)
-
-        If json Is Nothing Then
-            ' Either boot log output, which shares the wire and carries no
-            ' checksum, or a frame that failed verification. Both are ignored
-            ' without a reply: acknowledging a frame we could not verify would
-            ' tell the device a corrupted message had been acted on. Staying
-            ' silent makes it retry.
-            Interlocked.Increment(_framesRejected)
-            _log.Add("  " & line)
-            Return
-        End If
-
-        Interlocked.Increment(_framesOk)
-
-        Dim msg = LineCodec.Decode(json)
-
-        If msg Is Nothing Then
-            _log.Add("  ! unparseable payload: " & json)
-            Return
-        End If
-
-        ' An acknowledgement retires our own in-flight message. It is not a
-        ' message to act on, and acknowledging it back would loop forever.
-        If msg.Type = MessageType.Ack Then
-            _log.Add("< ack")
-            _awaitingAck = False
-            Return
-        End If
-
-        _log.Add("< " & Summarise(msg, json))
-
-        Select Case msg.Type
-            Case MessageType.Html
-                _pageReceived = True
-                PageRequestTimer.Stop()
-                _server.PushPage(If(msg.Body, String.Empty))
-                SetStatus("Page loaded")
-
-            Case MessageType.Update
-                _server.PushUpdate(BuildUpdateJson(msg))
-
-            Case MessageType.Notify
-                _server.PushNotify(BuildDialogJson(msg))
-
-            Case MessageType.Dialog
-                _server.PushDialog(BuildDialogJson(msg))
-        End Select
-
-        ' Acknowledge only after the message has been acted on, so the device
-        ' learns the content actually arrived somewhere rather than merely
-        ' having been read off the wire.
-        SendAck()
-    End Sub
-
-    Private Sub SendAck()
-        _serial.SendLine(LineCodec.EncodeAck())
-        _log.Add("> ack")
-    End Sub
-
-    Private Shared Function Summarise(msg As DeviceMessage, raw As String) As String
-        Select Case msg.Type
-            Case MessageType.Html
-                Return $"html ({If(msg.Body, String.Empty).Length} bytes)"
-            Case MessageType.Update
-                Return $"update {msg.Id} = {msg.Text}"
-            Case Else
-                Return If(raw.Length > 200, raw.Substring(0, 200) & "...", raw)
-        End Select
-    End Function
-
-    Private Shared Function BuildUpdateJson(msg As DeviceMessage) As String
-        Return JsonSerializer.Serialize(New With {
-            Key .id = If(msg.Id, String.Empty),
-            Key .text = msg.Text,
-            Key .value = msg.Value
-        })
-    End Function
-
-    Private Shared Function BuildDialogJson(msg As DeviceMessage) As String
-        Return JsonSerializer.Serialize(New With {
-            Key .id = If(msg.Id, String.Empty),
-            Key .title = If(msg.Title, String.Empty),
-            Key .message = If(msg.Message, String.Empty)
-        })
-    End Function
-
-    ''' <summary>Viewer interaction, arriving on an HTTP worker thread.</summary>
-    Private Sub OnViewerEvent(sender As Object, e As ViewerEventArgs)
-        Dim payload = LineCodec.EncodeEvent(e.Id, e.Action, e.Value)
-        _serial.SendLine(payload)
-        SafeUi(Sub() _log.Add($"> event {e.Id} {e.Action} {e.Value}"))
-    End Sub
-
-    Private Sub OnViewerRequestedPage(sender As Object, file As String)
-        _serial.SendLine(LineCodec.EncodeGetPage(file))
-        SafeUi(Sub() _log.Add($"> get_page {file}"))
-    End Sub
-
-    Private Sub OnSerialDisconnected(sender As Object, reason As String)
+    Private Sub OnSessionState(sender As Object, state As String)
         SafeUi(Sub()
-                   _log.Add($"--- link lost: {reason} ---")
-                   Disconnect()
-                   SetStatus("Link lost")
+                   UpdateTitle(state)
+                   If state = "link lost" Then
+                       ConnectMenuItem.Enabled = True
+                       DisconnectMenuItem.Enabled = False
+                   End If
                End Sub)
-    End Sub
-
-    ''' <summary>
-    ''' Runs on the serial reader thread. Only stores the counters -- the status
-    ''' dialog reads them on its own schedule, so there is no reason to marshal
-    ''' to the UI thread for every chunk that arrives.
-    ''' </summary>
-    Private Sub OnBytesTransferred(sender As Object, received As Long, sent As Long)
-        Interlocked.Exchange(_bytesIn, received)
-        Interlocked.Exchange(_bytesOut, sent)
     End Sub
 
     Private Sub SafeUi(action As Action)
@@ -455,28 +284,22 @@ Public Class Form1
     Private Sub ApplyViewport(w As Integer, h As Integer)
         _viewWidth = w
         _viewHeight = h
-        _server.SetViewport(w, h)
+        _session.SetViewport(w, h)
         SyncViewportChecks()
-        UpdateViewportLabel()
+        UpdateTitle()
 
-        ' The stage size is baked into the shell at serve time, so the viewer
-        ' has to be reloaded for a resolution change to take. The current page
-        ' is cached server-side and replays immediately.
+        ' The stage size is baked into the shell at serve time, so the viewer has
+        ' to be reloaded for a resolution change to take. The current page is
+        ' cached server-side and replays immediately.
         Browser.CoreWebView2?.Reload()
 
         If Not FitWindowMenuItem.Checked Then ResizeToViewport()
     End Sub
 
-    Private Sub UpdateViewportLabel()
-        ' Kept as the single place the resolution change is announced; the
-        ' status dialog reads the values directly.
-        SetStatus(_linkState)
-    End Sub
-
     ''' <summary>
     ''' Sizes the window so the rendered area is exactly the device's pixel
-    ''' count, then pulls it back to fit if the desktop is too small to hold it
-    ''' -- in which case the shell scales down on its own.
+    ''' count, then pulls it back to fit if the desktop is too small to hold it --
+    ''' in which case the shell scales down on its own.
     ''' </summary>
     Private Sub ResizeToViewport()
         If _isFullscreen Then Return
@@ -519,8 +342,8 @@ Public Class Form1
     End Sub
 
     ''' <summary>
-    ''' Escape leaves fullscreen. Without this the menu is hidden and there is
-    ''' no visible way back.
+    ''' Escape leaves fullscreen. Without this the menu is hidden and there is no
+    ''' visible way back.
     ''' </summary>
     Private Sub Form1_KeyDown(sender As Object, e As KeyEventArgs) Handles MyBase.KeyDown
         If e.KeyCode = Keys.Escape AndAlso _isFullscreen Then
@@ -574,16 +397,15 @@ Public Class Form1
     End Sub
 
     Private Sub RequestPageMenuItem_Click(sender As Object, e As EventArgs) Handles RequestPageMenuItem.Click
-        If _serial.IsOpen Then
-            RequestPage()
+        If _session.IsOpen Then
+            _session.RequestPage()
         Else
-            SetStatus("Not connected")
+            UpdateTitle("not connected")
         End If
     End Sub
 
     Private Sub ClearViewMenuItem_Click(sender As Object, e As EventArgs) Handles ClearViewMenuItem.Click
-        _pageReceived = False
-        _server.ClearPage()
+        _session.ClearPage()
     End Sub
 
     Private Sub SerialLogMenuItem_Click(sender As Object, e As EventArgs) Handles SerialLogMenuItem.Click
@@ -594,13 +416,24 @@ Public Class Form1
         Browser.CoreWebView2?.OpenDevToolsWindow()
     End Sub
 
+    Private Sub ConnectionStatusMenuItem_Click(sender As Object, e As EventArgs) Handles ConnectionStatusMenuItem.Click
+        If _statusDialog Is Nothing OrElse _statusDialog.IsDisposed Then
+            _statusDialog = New StatusDialog(AddressOf _session.Snapshot)
+            AddHandler _statusDialog.FormClosed, Sub() _statusDialog = Nothing
+            _statusDialog.Show(Me)
+        Else
+            _statusDialog.BringToFront()
+            _statusDialog.Focus()
+        End If
+    End Sub
+
     Private Sub AboutMenuItem_Click(sender As Object, e As EventArgs) Handles AboutMenuItem.Click
         Dim v = Reflection.Assembly.GetExecutingAssembly().GetName().Version
         MessageBox.Show(Me,
             $"ESP32 Visual Serial Terminal {v}" & vbCrLf & vbCrLf &
-            "Renders HTML pushed by a microcontroller over a serial link," & vbCrLf &
+            "Renders HTML pushed by a device over a serial link," & vbCrLf &
             "at the exact pixel dimensions of a target display." & vbCrLf & vbCrLf &
-            $"Viewer server: {_server.BaseUrl}" & vbCrLf &
+            $"Viewer server: {_session.Server.BaseUrl}" & vbCrLf &
             "Protocol: see PROTOCOL.md",
             "About", MessageBoxButtons.OK, MessageBoxIcon.Information)
     End Sub
@@ -616,48 +449,18 @@ Public Class Form1
 #End Region
 
     ''' <summary>
-    ''' Records the link state. The window title carries it too, so the state is
-    ''' visible without opening anything.
+    ''' The title carries port and link state, so the essentials stay visible
+    ''' without opening anything.
     ''' </summary>
-    Private Sub SetStatus(text As String)
-        _linkState = text
-
-        Dim port = If(_serial.IsOpen, $" — {_selectedPort} @ {_baudRate}", String.Empty)
-        Text = $"ESP32 Visual Serial Terminal{port} — {text}"
-    End Sub
-
-    Private Function ReadStatus() As StatusSnapshot
-        Return New StatusSnapshot With {
-            .LinkState = _linkState,
-            .PortName = If(_serial.IsOpen, _selectedPort, Nothing),
-            .BaudRate = _baudRate,
-            .IsOpen = _serial.IsOpen,
-            .ViewWidth = _viewWidth,
-            .ViewHeight = _viewHeight,
-            .BytesReceived = Interlocked.Read(_bytesIn),
-            .BytesSent = Interlocked.Read(_bytesOut),
-            .FramesReceived = Interlocked.Read(_framesOk),
-            .FramesRejected = Interlocked.Read(_framesRejected),
-            .ServerUrl = _server.BaseUrl
-        }
-    End Function
-
-    Private Sub ConnectionStatusMenuItem_Click(sender As Object, e As EventArgs) Handles ConnectionStatusMenuItem.Click
-        If _statusDialog Is Nothing OrElse _statusDialog.IsDisposed Then
-            _statusDialog = New StatusDialog(AddressOf ReadStatus)
-            AddHandler _statusDialog.FormClosed, Sub() _statusDialog = Nothing
-            _statusDialog.Show(Me)
-        Else
-            _statusDialog.BringToFront()
-            _statusDialog.Focus()
-        End If
+    Private Sub UpdateTitle(Optional state As String = Nothing)
+        Dim shown = If(state, _session.State)
+        Dim port = If(_session.IsOpen, $" — {_selectedPort} @ {_baudRate}", String.Empty)
+        Text = $"ESP32 Visual Serial Terminal{port} — {shown}"
     End Sub
 
     Protected Overrides Sub OnFormClosed(e As FormClosedEventArgs)
         PortScanTimer.Stop()
-        PageRequestTimer.Stop()
-        _serial.Dispose()
-        _server.Dispose()
+        _session.Dispose()
         _log.Dispose()
         MyBase.OnFormClosed(e)
     End Sub

@@ -1,24 +1,6 @@
 Imports System.Windows.Forms
 
 ''' <summary>
-''' A snapshot of everything worth reporting about the link, gathered in one
-''' place so the dialog has a single source to read from.
-''' </summary>
-Public Structure StatusSnapshot
-    Public LinkState As String
-    Public PortName As String
-    Public BaudRate As Integer
-    Public IsOpen As Boolean
-    Public ViewWidth As Integer
-    Public ViewHeight As Integer
-    Public BytesReceived As Long
-    Public BytesSent As Long
-    Public FramesReceived As Long
-    Public FramesRejected As Long
-    Public ServerUrl As String
-End Structure
-
-''' <summary>
 ''' Live view of the connection.
 ''' </summary>
 ''' <remarks>
