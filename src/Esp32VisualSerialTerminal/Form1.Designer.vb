@@ -50,15 +50,11 @@ Partial Class Form1
     Friend WithEvents DevToolsMenuItem As System.Windows.Forms.ToolStripMenuItem
     Friend WithEvents ToolsSep1 As System.Windows.Forms.ToolStripSeparator
 
+    Friend WithEvents StatusMenu As System.Windows.Forms.ToolStripMenuItem
+    Friend WithEvents ConnectionStatusMenuItem As System.Windows.Forms.ToolStripMenuItem
+
     Friend WithEvents HelpMenu As System.Windows.Forms.ToolStripMenuItem
     Friend WithEvents AboutMenuItem As System.Windows.Forms.ToolStripMenuItem
-
-    Friend WithEvents StatusStrip As System.Windows.Forms.StatusStrip
-    Friend WithEvents StatusLabel As System.Windows.Forms.ToolStripStatusLabel
-    Friend WithEvents PortLabel As System.Windows.Forms.ToolStripStatusLabel
-    Friend WithEvents ViewportLabel As System.Windows.Forms.ToolStripStatusLabel
-    Friend WithEvents TrafficLabel As System.Windows.Forms.ToolStripStatusLabel
-    Friend WithEvents Spring As System.Windows.Forms.ToolStripStatusLabel
 
     Friend WithEvents Browser As WebView2
 
@@ -95,18 +91,13 @@ Partial Class Form1
         Me.SerialLogMenuItem = New System.Windows.Forms.ToolStripMenuItem()
         Me.DevToolsMenuItem = New System.Windows.Forms.ToolStripMenuItem()
         Me.ToolsSep1 = New System.Windows.Forms.ToolStripSeparator()
+        Me.StatusMenu = New System.Windows.Forms.ToolStripMenuItem()
+        Me.ConnectionStatusMenuItem = New System.Windows.Forms.ToolStripMenuItem()
         Me.HelpMenu = New System.Windows.Forms.ToolStripMenuItem()
         Me.AboutMenuItem = New System.Windows.Forms.ToolStripMenuItem()
-        Me.StatusStrip = New System.Windows.Forms.StatusStrip()
-        Me.StatusLabel = New System.Windows.Forms.ToolStripStatusLabel()
-        Me.PortLabel = New System.Windows.Forms.ToolStripStatusLabel()
-        Me.ViewportLabel = New System.Windows.Forms.ToolStripStatusLabel()
-        Me.TrafficLabel = New System.Windows.Forms.ToolStripStatusLabel()
-        Me.Spring = New System.Windows.Forms.ToolStripStatusLabel()
         Me.Browser = New WebView2()
 
         Me.MenuStrip.SuspendLayout()
-        Me.StatusStrip.SuspendLayout()
         CType(Me.Browser, System.ComponentModel.ISupportInitialize).BeginInit()
         Me.SuspendLayout()
 
@@ -114,7 +105,7 @@ Partial Class Form1
         ' MenuStrip
         '
         Me.MenuStrip.Items.AddRange(New System.Windows.Forms.ToolStripItem() {
-            Me.FileMenu, Me.ConnectionMenu, Me.ViewMenu, Me.ToolsMenu, Me.HelpMenu})
+            Me.FileMenu, Me.ConnectionMenu, Me.ViewMenu, Me.ToolsMenu, Me.StatusMenu, Me.HelpMenu})
         Me.MenuStrip.Location = New System.Drawing.Point(0, 0)
         Me.MenuStrip.Name = "MenuStrip"
         Me.MenuStrip.Size = New System.Drawing.Size(1040, 24)
@@ -227,6 +218,17 @@ Partial Class Form1
         Me.DevToolsMenuItem.ShortcutKeys = System.Windows.Forms.Keys.F12
 
         '
+        ' Status
+        '
+        Me.StatusMenu.DropDownItems.AddRange(New System.Windows.Forms.ToolStripItem() {Me.ConnectionStatusMenuItem})
+        Me.StatusMenu.Name = "StatusMenu"
+        Me.StatusMenu.Text = "&Status"
+
+        Me.ConnectionStatusMenuItem.Name = "ConnectionStatusMenuItem"
+        Me.ConnectionStatusMenuItem.Text = "&Connection Status..."
+        Me.ConnectionStatusMenuItem.ShortcutKeys = CType(System.Windows.Forms.Keys.Control Or System.Windows.Forms.Keys.I, System.Windows.Forms.Keys)
+
+        '
         ' Help
         '
         Me.HelpMenu.DropDownItems.AddRange(New System.Windows.Forms.ToolStripItem() {Me.AboutMenuItem})
@@ -239,36 +241,6 @@ Partial Class Form1
         '
         ' StatusStrip
         '
-        Me.StatusStrip.Items.AddRange(New System.Windows.Forms.ToolStripItem() {
-            Me.StatusLabel, Me.PortLabel, Me.ViewportLabel, Me.Spring, Me.TrafficLabel})
-        Me.StatusStrip.Location = New System.Drawing.Point(0, 654)
-        Me.StatusStrip.Name = "StatusStrip"
-        Me.StatusStrip.Size = New System.Drawing.Size(1040, 22)
-        Me.StatusStrip.SizingGrip = True
-        Me.StatusStrip.TabIndex = 2
-
-        Me.StatusLabel.Name = "StatusLabel"
-        Me.StatusLabel.Text = "Disconnected"
-        Me.StatusLabel.BorderSides = System.Windows.Forms.ToolStripStatusLabelBorderSides.Right
-        Me.StatusLabel.BorderStyle = System.Windows.Forms.Border3DStyle.Etched
-
-        Me.PortLabel.Name = "PortLabel"
-        Me.PortLabel.Text = "No port"
-        Me.PortLabel.BorderSides = System.Windows.Forms.ToolStripStatusLabelBorderSides.Right
-        Me.PortLabel.BorderStyle = System.Windows.Forms.Border3DStyle.Etched
-
-        Me.ViewportLabel.Name = "ViewportLabel"
-        Me.ViewportLabel.Text = "1024 x 600"
-        Me.ViewportLabel.BorderSides = System.Windows.Forms.ToolStripStatusLabelBorderSides.Right
-        Me.ViewportLabel.BorderStyle = System.Windows.Forms.Border3DStyle.Etched
-
-        Me.Spring.Name = "Spring"
-        Me.Spring.Spring = True
-        Me.Spring.Text = ""
-
-        Me.TrafficLabel.Name = "TrafficLabel"
-        Me.TrafficLabel.Text = "rx 0 B  tx 0 B"
-
         '
         ' Browser
         '
@@ -290,7 +262,6 @@ Partial Class Form1
         Me.BackColor = System.Drawing.Color.FromArgb(20, 22, 26)
         Me.ClientSize = New System.Drawing.Size(1040, 676)
         Me.Controls.Add(Me.Browser)
-        Me.Controls.Add(Me.StatusStrip)
         Me.Controls.Add(Me.MenuStrip)
         Me.MainMenuStrip = Me.MenuStrip
         Me.KeyPreview = True
@@ -301,8 +272,6 @@ Partial Class Form1
 
         Me.MenuStrip.ResumeLayout(False)
         Me.MenuStrip.PerformLayout()
-        Me.StatusStrip.ResumeLayout(False)
-        Me.StatusStrip.PerformLayout()
         CType(Me.Browser, System.ComponentModel.ISupportInitialize).EndInit()
         Me.ResumeLayout(False)
         Me.PerformLayout()

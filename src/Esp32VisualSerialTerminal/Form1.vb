@@ -1,4 +1,5 @@
 Imports System.Text.Json
+Imports System.Threading
 Imports System.Windows.Forms
 
 ''' <summary>
@@ -29,8 +30,10 @@ Public Class Form1
     Private ReadOnly _server As New LocalServer()
     Private ReadOnly _log As New SerialLog()
 
-    Private WithEvents PageRequestTimer As New Timer() With {.Interval = PageRequestIntervalMs}
-    Private WithEvents PortScanTimer As New Timer() With {.Interval = 1500}
+    ' Fully qualified: System.Threading is imported for Interlocked, and both
+    ' namespaces define a Timer.
+    Private WithEvents PageRequestTimer As New System.Windows.Forms.Timer() With {.Interval = PageRequestIntervalMs}
+    Private WithEvents PortScanTimer As New System.Windows.Forms.Timer() With {.Interval = 1500}
 
     Private _selectedPort As String
     Private _baudRate As Integer = SerialTransport.DefaultBaudRate
@@ -39,6 +42,14 @@ Public Class Form1
     Private _pageReceived As Boolean
     Private _awaitingAck As Boolean
     Private _knownPorts As String() = Array.Empty(Of String)()
+
+    ' Reported through Status -> Connection Status rather than a permanent bar.
+    Private _linkState As String = "disconnected"
+    Private _bytesIn As Long
+    Private _bytesOut As Long
+    Private _framesOk As Long
+    Private _framesRejected As Long
+    Private _statusDialog As StatusDialog
 
     Private _isFullscreen As Boolean
     Private _preFullscreenBounds As Drawing.Rectangle
@@ -239,8 +250,7 @@ Public Class Form1
             _pageReceived = False
             _log.Add($"--- opened {_selectedPort} @ {_baudRate} 8N1 ---")
 
-            SetStatus("Connected")
-            PortLabel.Text = $"{_selectedPort} @ {_baudRate}"
+            SetStatus("connected")
             ConnectMenuItem.Enabled = False
             DisconnectMenuItem.Enabled = True
 
@@ -272,8 +282,7 @@ Public Class Form1
         _server.ClearPage()
         _log.Add("--- closed ---")
 
-        SetStatus("Disconnected")
-        PortLabel.Text = "No port"
+        SetStatus("disconnected")
         ConnectMenuItem.Enabled = True
         DisconnectMenuItem.Enabled = False
     End Sub
@@ -317,9 +326,12 @@ Public Class Form1
             ' without a reply: acknowledging a frame we could not verify would
             ' tell the device a corrupted message had been acted on. Staying
             ' silent makes it retry.
+            Interlocked.Increment(_framesRejected)
             _log.Add("  " & line)
             Return
         End If
+
+        Interlocked.Increment(_framesOk)
 
         Dim msg = LineCodec.Decode(json)
 
@@ -413,15 +425,15 @@ Public Class Form1
                End Sub)
     End Sub
 
+    ''' <summary>
+    ''' Runs on the serial reader thread. Only stores the counters -- the status
+    ''' dialog reads them on its own schedule, so there is no reason to marshal
+    ''' to the UI thread for every chunk that arrives.
+    ''' </summary>
     Private Sub OnBytesTransferred(sender As Object, received As Long, sent As Long)
-        SafeUi(Sub() TrafficLabel.Text = $"rx {Humanise(received)}  tx {Humanise(sent)}")
+        Interlocked.Exchange(_bytesIn, received)
+        Interlocked.Exchange(_bytesOut, sent)
     End Sub
-
-    Private Shared Function Humanise(bytes As Long) As String
-        If bytes < 1024 Then Return $"{bytes} B"
-        If bytes < 1024L * 1024L Then Return $"{bytes / 1024.0:0.0} KB"
-        Return $"{bytes / (1024.0 * 1024.0):0.0} MB"
-    End Function
 
     Private Sub SafeUi(action As Action)
         If IsDisposed OrElse Not IsHandleCreated Then Return
@@ -455,7 +467,9 @@ Public Class Form1
     End Sub
 
     Private Sub UpdateViewportLabel()
-        ViewportLabel.Text = $"{_viewWidth} x {_viewHeight}"
+        ' Kept as the single place the resolution change is announced; the
+        ' status dialog reads the values directly.
+        SetStatus(_linkState)
     End Sub
 
     ''' <summary>
@@ -487,7 +501,6 @@ Public Class Form1
             _isFullscreen = False
             FormBorderStyle = FormBorderStyle.Sizable
             MenuStrip.Visible = True
-            StatusStrip.Visible = True
             WindowState = _preFullscreenState
             If _preFullscreenState = FormWindowState.Normal Then Bounds = _preFullscreenBounds
         Else
@@ -496,7 +509,6 @@ Public Class Form1
             _preFullscreenState = WindowState
 
             MenuStrip.Visible = False
-            StatusStrip.Visible = False
             WindowState = FormWindowState.Normal
             FormBorderStyle = FormBorderStyle.None
             Bounds = Screen.FromControl(Me).Bounds
@@ -602,8 +614,42 @@ Public Class Form1
 
 #End Region
 
+    ''' <summary>
+    ''' Records the link state. The window title carries it too, so the state is
+    ''' visible without opening anything.
+    ''' </summary>
     Private Sub SetStatus(text As String)
-        StatusLabel.Text = text
+        _linkState = text
+
+        Dim port = If(_serial.IsOpen, $" — {_selectedPort} @ {_baudRate}", String.Empty)
+        Text = $"ESP32 Visual Serial Terminal{port} — {text}"
+    End Sub
+
+    Private Function ReadStatus() As StatusSnapshot
+        Return New StatusSnapshot With {
+            .LinkState = _linkState,
+            .PortName = If(_serial.IsOpen, _selectedPort, Nothing),
+            .BaudRate = _baudRate,
+            .IsOpen = _serial.IsOpen,
+            .ViewWidth = _viewWidth,
+            .ViewHeight = _viewHeight,
+            .BytesReceived = Interlocked.Read(_bytesIn),
+            .BytesSent = Interlocked.Read(_bytesOut),
+            .FramesReceived = Interlocked.Read(_framesOk),
+            .FramesRejected = Interlocked.Read(_framesRejected),
+            .ServerUrl = _server.BaseUrl
+        }
+    End Function
+
+    Private Sub ConnectionStatusMenuItem_Click(sender As Object, e As EventArgs) Handles ConnectionStatusMenuItem.Click
+        If _statusDialog Is Nothing OrElse _statusDialog.IsDisposed Then
+            _statusDialog = New StatusDialog(AddressOf ReadStatus)
+            AddHandler _statusDialog.FormClosed, Sub() _statusDialog = Nothing
+            _statusDialog.Show(Me)
+        Else
+            _statusDialog.BringToFront()
+            _statusDialog.Focus()
+        End If
     End Sub
 
     Protected Overrides Sub OnFormClosed(e As FormClosedEventArgs)
