@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viewer</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    background: #14161a;
+  }
+
+  /* The stage is pinned to the target device's exact CSS pixel size and is
+     never resized. Only its transform changes, so layout inside the frame is
+     always computed against the real device viewport regardless of how large
+     the host window happens to be. */
+  #stage {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: top left;
+    background: #000;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+
+  #content {
+    border: none;
+    display: block;
+    background: #fff;
+  }
+
+  #placeholder {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font: 14px/1.6 system-ui, "Segoe UI", sans-serif;
+    color: #7d848f;
+    background: #14161a;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  #placeholder.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div id="stage"><iframe id="content"></iframe></div>
+<div id="placeholder">Waiting for a page from the device&hellip;</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Injected by the host before the page is served.
+  var VIEW_W = __VIEW_W__;
+  var VIEW_H = __VIEW_H__;
+
+  var stage = document.getElementById("stage");
+  var frame = document.getElementById("content");
+  var placeholder = document.getElementById("placeholder");
+
+  stage.style.width = VIEW_W + "px";
+  stage.style.height = VIEW_H + "px";
+  frame.style.width = VIEW_W + "px";
+  frame.style.height = VIEW_H + "px";
+
+  // Scale the rasterized output only. The frame keeps its device-sized
+  // viewport, so media queries, text wrapping and element geometry inside the
+  // page resolve exactly as they do on the hardware. Letterboxes to preserve
+  // aspect ratio and centres whatever is left over.
+  function fit() {
+    var k = Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H);
+    var x = Math.round((window.innerWidth - VIEW_W * k) / 2);
+    var y = Math.round((window.innerHeight - VIEW_H * k) / 2);
+    stage.style.transform = "translate(" + x + "px," + y + "px) scale(" + k + ")";
+  }
+
+  window.addEventListener("resize", fit);
+  fit();
+
+  var es = new EventSource("/events");
+
+  // Full document replacement. Only arrives when the device pushes a new
+  // page, never for individual value changes.
+  es.addEventListener("page", function (e) {
+    placeholder.className = "hidden";
+    frame.srcdoc = e.data;
+  });
+
+  // Patches a single element in the already-loaded document. No srcdoc
+  // reassignment means no teardown, no reflow of the whole tree, no flash.
+  es.addEventListener("update", function (e) {
+    try {
+      var d = JSON.parse(e.data);
+      var doc = frame.contentDocument;
+      if (!doc) return;
+      var el = doc.getElementById(d.id);
+      if (!el) return;
+      if (d.text !== undefined && d.text !== null) el.textContent = d.text;
+      if (d.value !== undefined && d.value !== null && "value" in el) el.value = d.value;
+    } catch (err) {}
+  });
+
+  // The device asks the host to show a transient message.
+  es.addEventListener("notify", function (e) {
+    try {
+      var d = JSON.parse(e.data);
+      toast((d.title ? d.title + " — " : "") + (d.message || ""));
+    } catch (err) {}
+  });
+
+  // Blocking message. The host acknowledges once the viewer dismisses it so
+  // the device knows the user actually saw it.
+  es.addEventListener("dialog", function (e) {
+    try {
+      var d = JSON.parse(e.data);
+      window.alert((d.title ? d.title + "\n\n" : "") + (d.message || ""));
+      send("/event?id=" + encodeURIComponent(d.id || "") + "&action=dialog_dismiss");
+    } catch (err) {}
+  });
+
+  // Host closed the stream, or the device went away.
+  es.addEventListener("clear", function () {
+    frame.srcdoc = "";
+    placeholder.className = "";
+  });
+
+  function send(url) {
+    try { fetch(url, { cache: "no-store" }); } catch (err) {}
+  }
+
+  var toastEl = null;
+  var toastTimer = null;
+
+  function toast(text) {
+    if (!toastEl) {
+      toastEl = document.createElement("div");
+      toastEl.style.cssText =
+        "position:absolute;left:50%;bottom:24px;transform:translateX(-50%);" +
+        "max-width:80%;padding:10px 16px;border-radius:6px;" +
+        "background:rgba(20,22,26,.94);color:#e8eaed;font:13px/1.5 system-ui,'Segoe UI',sans-serif;" +
+        "box-shadow:0 4px 16px rgba(0,0,0,.5);z-index:10;pointer-events:none;";
+      document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = text;
+    toastEl.style.display = "block";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.style.display = "none"; }, 4000);
+  }
+})();
+</script>
+
+</body>
+</html>

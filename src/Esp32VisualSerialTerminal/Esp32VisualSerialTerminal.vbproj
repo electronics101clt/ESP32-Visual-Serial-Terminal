@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>Esp32VisualSerialTerminal</RootNamespace>
+    <AssemblyName>Esp32VisualSerialTerminal</AssemblyName>
+    <!-- Application Framework: My.Application starts Form1, so there is no
+         hand-written entry point. Configured in My Project\Application.myapp. -->
+    <MyType>WindowsForms</MyType>
+    <OptionStrict>On</OptionStrict>
+    <OptionInfer>On</OptionInfer>
+    <OptionExplicit>On</OptionExplicit>
+    <Platforms>AnyCPU;x64</Platforms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Product>ESP32 Visual Serial Terminal</Product>
+    <AssemblyTitle>ESP32 Visual Serial Terminal</AssemblyTitle>
+    <Description>Renders HTML pushed by a microcontroller over serial, at the exact pixel dimensions of a target display.</Description>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Served verbatim by the local viewer server. Kept as a standalone file
+         rather than a string constant so it stays portable to other hosts. -->
+    <EmbeddedResource Include="Shell\shell.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Import Include="System" />
+    <Import Include="System.Collections.Generic" />
+    <Import Include="System.Linq" />
+  </ItemGroup>
+
+  <!-- The WebView2 package ships the WinForms and WPF controls together. Only
+       the WinForms one is used here, and the WPF assembly drags in a WindowsBase
+       version that conflicts with the one in the desktop framework reference
+       (MSB3277). Dropping the unused assembly resolves the conflict at source
+       rather than silencing the warning. -->
+  <Target Name="RemoveUnusedWebView2Wpf" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
+
+</Project>

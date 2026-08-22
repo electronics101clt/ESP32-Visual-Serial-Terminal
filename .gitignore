@@ -1,0 +1,47 @@
+## Build output
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.vbproj.user
+*.csproj.user
+
+## Rider / VS Code
+.idea/
+.vscode/
+*.sln.iml
+
+## Test / coverage
+[Tt]est[Rr]esult*/
+*.coverage
+*.coveragexml
+
+## NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+!packages/build/
+
+## WebView2 user data, written next to the executable at runtime
+*.WebView2/
+EBWebView/
+
+## OS noise
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+## Publish output
+publish/
+*.publishsettings
+PublishScripts/
