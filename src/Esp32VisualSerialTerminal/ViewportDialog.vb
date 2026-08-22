@@ -24,6 +24,7 @@ Public NotInheritable Class ViewportDialog
 
     Public Sub New(currentWidth As Integer, currentHeight As Integer)
         Text = "Device Resolution"
+        AppIcon.Apply(Me)
         FormBorderStyle = FormBorderStyle.FixedDialog
         StartPosition = FormStartPosition.CenterParent
         ClientSize = New Drawing.Size(300, 132)

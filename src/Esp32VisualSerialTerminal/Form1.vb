@@ -57,6 +57,7 @@ Public Class Form1
 
     Public Sub New()
         InitializeComponent()
+        AppIcon.Apply(Me)
         BuildBaudMenu()
         BuildViewportMenu()
 

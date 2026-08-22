@@ -59,6 +59,7 @@ Public NotInheritable Class SerialLog
 
         Public Sub New()
             Text = "Serial Log"
+            AppIcon.Apply(Me)
             ClientSize = New Drawing.Size(760, 460)
             StartPosition = FormStartPosition.CenterParent
             ShowInTaskbar = False

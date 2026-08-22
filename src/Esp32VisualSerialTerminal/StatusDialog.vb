@@ -47,6 +47,7 @@ Public NotInheritable Class StatusDialog
         _read = read
 
         Text = "Connection Status"
+        AppIcon.Apply(Me)
         FormBorderStyle = FormBorderStyle.FixedToolWindow
         StartPosition = FormStartPosition.CenterParent
         ShowInTaskbar = False
