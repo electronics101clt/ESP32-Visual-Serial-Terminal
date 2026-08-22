@@ -1,10 +1,12 @@
 # ESP32 Visual Serial Terminal
 
-A serial terminal that renders a user interface instead of scrolling text.
+A terminal where the device sends HTML instead of escape codes.
 
-The connected device sends HTML over the wire; this displays it at the exact
-pixel dimensions of a chosen resolution and sends interaction back. Buttons
-work. Values update in place.
+An ANSI terminal renders whatever the far end sends it — text, colour, cursor
+moves — and the far end owns what appears on screen. This works the same way,
+with the same division of responsibility. Only the display language differs:
+the device sends a page, the terminal renders it at a fixed pixel resolution,
+and sends interaction back. Buttons work. Values update in place.
 
 The device owns the entire interface. Nothing about it lives in this
 application.
