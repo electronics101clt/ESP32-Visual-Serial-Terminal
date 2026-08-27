@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Esp32VisualSerialTerminal.Linux</RootNamespace>
+    <AssemblyName>Esp32VisualSerialTerminal</AssemblyName>
+    <OptionStrict>On</OptionStrict>
+    <OptionInfer>On</OptionInfer>
+    <OptionExplicit>On</OptionExplicit>
+    <Product>ESP32 Visual Serial Terminal</Product>
+    <AssemblyTitle>ESP32 Visual Serial Terminal (Linux)</AssemblyTitle>
+    <Description>Renders HTML pushed by a microcontroller over serial, at the exact pixel dimensions of a target display.</Description>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Shared protocol and transport code from the Windows project -->
+    <Compile Include="..\Esp32VisualSerialTerminal\Protocol\Crc32.vb" Link="Protocol\Crc32.vb" />
+    <Compile Include="..\Esp32VisualSerialTerminal\Protocol\Messages.vb" Link="Protocol\Messages.vb" />
+    <Compile Include="..\Esp32VisualSerialTerminal\Transport\SerialTransport.vb" Link="Transport\SerialTransport.vb" />
+    <Compile Include="..\Esp32VisualSerialTerminal\Server\LocalServer.vb" Link="Server\LocalServer.vb" />
+    <Compile Include="..\Esp32VisualSerialTerminal\Session\LinkSession.vb" Link="Session\LinkSession.vb" />
+
+    <!-- Embedded shell.html from the Windows project -->
+    <EmbeddedResource Include="..\Esp32VisualSerialTerminal\Shell\shell.html" Link="Shell\shell.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="GtkSharp" Version="3.24.24.95" />
+    <PackageReference Include="WebkitGtkSharp" Version="3.24.24.95" />
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>
