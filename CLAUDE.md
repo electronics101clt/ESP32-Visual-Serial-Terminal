@@ -28,7 +28,7 @@ This installation was done **manually** (not using the provided install script).
 **This installation:**
 - Left in `/tmp/ESP32-Visual-Serial-Terminal/`
 - Shorter command name: `esp32-terminal` (instead of `esp32-visual-serial-terminal`)
-- No desktop entry created
+- Desktop entry added manually: `/usr/share/applications/esp32-visual-serial-terminal.desktop`
 
 ### Files
 
