@@ -8,6 +8,7 @@ Public NotInheritable Class StatusDialog
 
     Private ReadOnly _read As Func(Of StatusSnapshot)
     Private ReadOnly _values As New Dictionary(Of String, Label)()
+    Private _rejectedCss As CssProvider
 
     Private Shared ReadOnly Rows As String() = {
         "Link", "Port", "Baud", "Screen", "Received", "Sent", "Frames", "Rejected", "Viewer"
@@ -79,15 +80,18 @@ Public NotInheritable Class StatusDialog
         _values("Viewer").Text = If(s.ServerUrl, "-")
 
         ' Colour rejected frames red if they're keeping pace with accepted ones
+        Dim rejectedLabel = _values("Rejected")
         If s.FramesRejected > 0 AndAlso s.FramesRejected >= s.FramesReceived Then
-            Dim css As New CssProvider()
-            css.LoadFromData("label { color: #b22222; }")
-            _values("Rejected").StyleContext.AddProvider(css, 800)
+            If _rejectedCss Is Nothing Then
+                _rejectedCss = New CssProvider()
+                _rejectedCss.LoadFromData("label { color: #b22222; }")
+            End If
+            rejectedLabel.StyleContext.AddProvider(_rejectedCss, 800)
         Else
-            ' Reset to default
-            For Each provider In _values("Rejected").StyleContext.ListProviders()
-                _values("Rejected").StyleContext.RemoveProvider(provider)
-            Next
+            ' Remove the red styling
+            If _rejectedCss IsNot Nothing Then
+                rejectedLabel.StyleContext.RemoveProvider(_rejectedCss)
+            End If
         End If
     End Sub
 

@@ -64,7 +64,7 @@ Public NotInheritable Class SerialLog
             Dim vbox As New Box(Orientation.Vertical, 0)
 
             ' Text view with scrolling
-            _buffer = New TextBuffer(Nothing)
+            _buffer = New TextBuffer(CType(Nothing, TextTagTable))
             _textView = New TextView(_buffer)
             _textView.Editable = False
             _textView.Monospace = True
@@ -120,8 +120,9 @@ Public NotInheritable Class SerialLog
             If Not Visible Then Return
 
             Application.Invoke(Sub()
-                Dim endIter = _buffer.EndIter
-                _buffer.Insert(endIter, line & Environment.NewLine)
+                Dim text = line & Environment.NewLine
+                _buffer.PlaceCursor(_buffer.EndIter)
+                _buffer.InsertAtCursor(text)
                 If _autoScroll.Active Then ScrollToEnd()
             End Sub)
         End Sub

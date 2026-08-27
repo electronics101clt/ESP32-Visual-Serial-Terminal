@@ -235,8 +235,9 @@ Public Class MainWindow
 
         Dim devToolsItem As New MenuItem("Browser _DevTools")
         AddHandler devToolsItem.Activated, Sub()
-            Dim inspector = _webView.GetInspector()
-            inspector?.Show()
+            ' WebKitGTK inspector - right-click context menu also provides this
+            Dim settings = _webView.Settings
+            settings.EnableDeveloperExtras = True
         End Sub
         toolsMenu.Append(devToolsItem)
 
@@ -268,13 +269,15 @@ Public Class MainWindow
     End Function
 
     Private Sub BuildBaudMenu()
-        For Each child In _baudMenu.Children
-            _baudMenu.Remove(child)
+        Dim children = _baudMenu.Children
+        For i = children.Length - 1 To 0 Step -1
+            _baudMenu.Remove(children(i))
         Next
 
         Dim group As RadioMenuItem = Nothing
 
-        For Each baud In BaudRates
+        For i = 0 To BaudRates.Length - 1
+            Dim baud = BaudRates(i)
             Dim captured = baud
             Dim item As RadioMenuItem
 
@@ -301,13 +304,15 @@ Public Class MainWindow
     End Sub
 
     Private Sub BuildViewportMenu()
-        For Each child In _viewportMenu.Children
-            _viewportMenu.Remove(child)
+        Dim children = _viewportMenu.Children
+        For i = children.Length - 1 To 0 Step -1
+            _viewportMenu.Remove(children(i))
         Next
 
         Dim group As RadioMenuItem = Nothing
 
-        For Each preset In Presets
+        For i = 0 To Presets.Length - 1
+            Dim preset = Presets(i)
             Dim w = preset.W
             Dim h = preset.H
             Dim item As RadioMenuItem
@@ -342,8 +347,9 @@ Public Class MainWindow
     Private Sub RefreshPorts()
         _knownPorts = LinuxSerialPorts.GetAvailablePorts()
 
-        For Each child In _portsMenu.Children
-            _portsMenu.Remove(child)
+        Dim children = _portsMenu.Children
+        For i = children.Length - 1 To 0 Step -1
+            _portsMenu.Remove(children(i))
         Next
 
         If _knownPorts.Length = 0 Then
@@ -353,7 +359,8 @@ Public Class MainWindow
         Else
             Dim group As RadioMenuItem = Nothing
 
-            For Each portName In _knownPorts
+            For j = 0 To _knownPorts.Length - 1
+                Dim portName = _knownPorts(j)
                 Dim captured = portName
                 Dim item As RadioMenuItem
 
@@ -404,7 +411,7 @@ Public Class MainWindow
         Connect()
     End Sub
 
-    Private Sub Connect()
+    Private Sub Connect(Optional showErrorDialog As Boolean = False)
         If String.IsNullOrEmpty(_selectedPort) Then
             UpdateTitle("no port selected")
             Return
@@ -417,7 +424,9 @@ Public Class MainWindow
         Catch ex As Exception
             _log.Add($"--- open failed: {ex.Message} ---")
             UpdateTitle("connect failed")
-            ShowError($"Could not open {_selectedPort}." & Environment.NewLine & ex.Message)
+            If showErrorDialog Then
+                ShowError($"Could not open {_selectedPort}." & Environment.NewLine & ex.Message)
+            End If
         End Try
     End Sub
 
@@ -439,7 +448,7 @@ Public Class MainWindow
             RefreshPorts()
             TryAutoConnect()
         Else
-            Connect()
+            Connect(showErrorDialog:=True)
         End If
     End Sub
 
@@ -521,7 +530,7 @@ Public Class MainWindow
     End Sub
 
     Private Sub OnAboutClicked(sender As Object, e As EventArgs)
-        Dim dlg As New MessageDialog(Me, DialogFlags.Modal, MessageType.Info, ButtonsType.Ok,
+        Dim dlg As New MessageDialog(Me, DialogFlags.Modal, Gtk.MessageType.Info, ButtonsType.Ok,
             "ESP32 Visual Serial Terminal 0.1.0" & Environment.NewLine & Environment.NewLine &
             "Renders HTML pushed by a device over a serial link," & Environment.NewLine &
             "at the exact pixel dimensions of a target display." & Environment.NewLine & Environment.NewLine &
@@ -533,7 +542,7 @@ Public Class MainWindow
     End Sub
 
     Private Sub ShowError(message As String)
-        Dim dlg As New MessageDialog(Me, DialogFlags.Modal, MessageType.Error, ButtonsType.Ok, message)
+        Dim dlg As New MessageDialog(Me, DialogFlags.Modal, Gtk.MessageType.Error, ButtonsType.Ok, message)
         dlg.Title = "Error"
         dlg.Run()
         dlg.Destroy()
