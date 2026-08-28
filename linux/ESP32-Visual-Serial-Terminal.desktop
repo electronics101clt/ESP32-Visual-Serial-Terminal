@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=ESP32 Visual Serial Terminal
+Comment=Renders HTML pushed by a microcontroller over serial
+Exec=/home/jonathan/Desktop/ESP32-Visual-Serial-Terminal/bin/linux/Esp32VisualSerialTerminal
+Icon=network-transmit-receive
+Terminal=false
+Type=Application
+Categories=Development;Electronics;
+Keywords=ESP32;serial;terminal;microcontroller;
